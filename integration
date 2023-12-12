@@ -1,0 +1,64 @@
+pipeline{
+    agent any
+    tools{
+        jdk'jdk11'
+        maven'maven3'
+    }
+    environment{
+        SCANNER_HOME=tool'sonar-scanner'
+    }
+    stages{
+        stage('cleanworkspace'){
+            steps{
+                cleanWs()
+            }
+        }
+        stage('clone'){
+            steps{
+                checkout scmGit(branches: [[name: '*/dev']], extensions: [], userRemoteConfigs: [[url: 'https://github.com/anjalidarapureddy/taxi-booking.git']])
+            }
+        }
+        stage('mvn compile'){
+            steps{
+                sh'mvn compile'
+            }
+        }
+        stage('mvn test'){
+            steps{
+                sh'mvn test'
+            }
+        }
+        stage('code analysis'){
+            steps{
+                withSonarQubeEnv('sonar-server') {
+                    sh'''mvn clean verify sonar:sonar -Dsonar.projectKey=taxi-book -Dsonar.projectName='taxi-book' -Dsonar.host.url=http://13.229.52.121:9000 -Dsonar.token=sqp_90bc82f0d38d73852ff155cdef9283e91b894f39'''
+                }
+            }
+        }
+        stage('mvn package'){
+            steps{
+                sh'mvn package'
+            }
+        }
+        stage('docker build'){
+            steps{
+                script{
+                    withDockerRegistry(credentialsId: 'dockerhub', toolName: 'Docker') {
+                    sh'docker build -t taxi-booking .'
+                    sh'docker tag taxi-booking darapureddy87/taxi-booking:latest'
+                    sh'docker push darapureddy87/taxi-booking:latest'
+                    }
+                }
+            }
+        }
+        stage('run docker container'){
+            steps{
+                script{
+                   withDockerRegistry(credentialsId: 'dockerhub', toolName: 'Docker') {
+                       sh'docker run --name taxi-book -d -p 8087:8080 darapureddy87/taxi-booking:latest'
+                    }   
+                }
+            }
+        }
+    }
+}
